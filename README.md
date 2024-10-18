@@ -8,7 +8,7 @@ For example, user thread T0 waits for semaphore S1, and thread T1 does the first
 
 This script uses ebp-usdt to trace the waiting process of one random user thread, and also the notify position of all wakeup threads.
 
-**usage: **
+#### usage:
 First, we should include the header of folly tracing files and insert 'FOLLY_SDT' tracepoint to our source code.
 
 1. wait_position
@@ -33,7 +33,7 @@ pthread_cond_notify(S1)
 Only the threshold exceeds the notify_val, the next thread will be notified.
 
 then run our program, and use eBPF script to print the following similar result.
-**example: **
+#### example:
 ```shell
 $ sudo python wakeup_latency.py -p 36780 -d 1 -u
 [ Attaching probes to pid 36780 for 5 seconds ]
@@ -101,6 +101,7 @@ Sometimes, we want to know who holds the target latch, and cause user thread to 
 
 This scripts uses ebp-usdt to trace the waiting process of one random user thread, and shows all holding threads and its stacks, average latency and hold counts.
 
+#### usage:
 1. wait_position
 ```c++
 #include "folly/tracing/StaticTracepoint.h"
@@ -121,6 +122,7 @@ void mutex_exit(void *mutex) {
 }
 ```
 
+#### example:
 ```shell
 [ Attaching probes to pid 37509 for 5 seconds ]
 ================================================================================
