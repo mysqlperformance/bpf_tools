@@ -15,19 +15,19 @@ First, we should include the header of folly tracing files and insert 'FOLLY_SDT
 ```c++
 #include "folly/tracing/StaticTracepoint.h"
 
-FOLLY_SDT(usdt, wait_start, threshold);
+FOLLY_SDT(wakeup, wait_start, threshold);
 pthread_cond_wait(S1)
-FOLLY_SDT(usdt, wait_end);
+FOLLY_SDT(wakeup, wait_end);
 ```
 
 2. notify position
 ```c++
 // thread T1
-FOLLY_SDT(usdt, 1, notify_val);
+FOLLY_SDT(wakeup, 1, notify_val);
 wakeup_T2()
 
 // thread T2
-FOLLY_SDT(usdt, 2, notify_val);
+FOLLY_SDT(wakeup, 2, notify_val);
 pthread_cond_notify(S1)
 ```
 Only the threshold exceeds the notify_val, the next thread will be notified.
@@ -106,15 +106,15 @@ This scripts uses ebp-usdt to trace the waiting process of one random user threa
 ```c++
 #include "folly/tracing/StaticTracepoint.h"
 
-FOLLY_SDT(usdt, wait_start, mutex_addr);
+FOLLY_SDT(latch, wait_start, mutex_addr);
 mutex_enter(mutex_addr);
-FOLLY_SDT(usdt, wait_end);
+FOLLY_SDT(latch, wait_end);
 ```
 
 2. mutex_exit position
 ```c++
 __attribute__((noinline)) void latch_exit(void *mutex) {
-  FOLLY_SDT(usdt, latch_exit, mutex);
+  FOLLY_SDT(latch, latch_exit, mutex);
 }
 
 void mutex_exit(void *mutex) {
@@ -124,20 +124,23 @@ void mutex_exit(void *mutex) {
 
 #### example:
 ```shell
-[ Attaching probes to pid 37509 for 5 seconds ]
+$ sudo python latch_latency.py -p 4480 -d 1 -u
+[ Attaching probes to pid 4480 for 5 seconds ]
 ================================================================================
 Latch wait latency:
 
-avg : 736 usecs, cnt: 2214
+avg : 726 usecs, cnt: 2251
 
 ================================================================================
 Latency that other threads hold this latch when we are waiting:
 
-| 65 usecs, 74 counts | mysqld | latch_exit();ReadView::clone_oldest();PrivateReadView::open_purge();trx_purge();srv_purge_coordinator_thread();start_thread()
+| 2 usecs, 2 counts | mysqld | latch_exit(sync0sync.cc:1743);lock_rec_convert_impl_to_expl(buf0buf.ic:776);lock_clust_rec_read_check_and_lock(lock0lock.cc:7184);sel_set_rec_lock(row0sel.cc:1023);row_search_for_mysql(row0sel.cc:4587);ha_innobase::index_read(ha_innodb.cc:9783);handler::read_range_first(handler.cc:2779);handler::multi_range_read_next(handler.cc:6010);QUICK_RANGE_SELECT::get_next(opt_range.cc:10612);rr_quick(records.cc:368 (discriminator 1));mysql_update(sql_update.cc:847);mysql_execute_command(sql_parse.cc:4446);Prepared_statement::execute(sql_prepare.cc:4057);Prepared_statement::execute_loop(sql_prepare.cc:3703);mysqld_stmt_execute(sql_prepare.cc:2725);dispatch_command(sql_parse.cc:1702);do_handle_one_connection(sql_connect.cc:1112);handle_one_connection(sql_connect.cc:1026);start_thread(??:?)
 
-| 5 usecs, 37760 counts | mysqld | latch_exit();trx_commit_low();trx_commit();trx_commit_for_mysql();innobase_commit();ha_commit_low();TC_LOG_DUMMY::commit();ha_commit_trans();trans_commit_stmt();mysql_execute_command();Prepared_statement::execute();Prepared_statement::execute_loop();mysqld_stmt_execute();dispatch_command();do_handle_one_connection();handle_one_connection();start_thread()
+| 18 usecs, 74 counts | mysqld | latch_exit(sync0sync.cc:1743);ReadView::clone_oldest(read0read.cc:455);PrivateReadView::open_purge(read0read.cc:959);trx_purge(trx0purge.cc:2416);srv_purge_coordinator_thread(srv0srv.cc:3224);start_thread(??:?)
 
-| 12 usecs, 37901 counts | mysqld | latch_exit();trx_commit_low();trx_commit();trx_commit_for_mysql();innobase_commit();ha_commit_low();TC_LOG_DUMMY::commit();ha_commit_trans();trans_commit_stmt();mysql_execute_command();Prepared_statement::execute();Prepared_statement::execute_loop();mysqld_stmt_execute();dispatch_command();do_handle_one_connection();handle_one_connection();start_thread()
+| 6 usecs, 39383 counts | mysqld | latch_exit(sync0sync.cc:1743);trx_commit_low(sync0sync.ic:195);trx_commit(trx0trx.cc:2018);trx_commit_for_mysql(trx0trx.cc:2306);innobase_commit(ha_innodb.cc:5375);ha_commit_low(handler.cc:1693);TC_LOG_DUMMY::commit(log.h:122);ha_commit_trans(handler.cc:1611 (discriminator 2));trans_commit_stmt(transaction.cc:440);mysql_execute_command(sql_class.h:3628);Prepared_statement::execute(sql_prepare.cc:4057);Prepared_statement::execute_loop(sql_prepare.cc:3703);mysqld_stmt_execute(sql_prepare.cc:2725);dispatch_command(sql_parse.cc:1702);do_handle_one_connection(sql_connect.cc:1112);handle_one_connection(sql_connect.cc:1026);start_thread(??:?)
 
-| 22 usecs, 38439 counts | mysqld | latch_exit();trx_start_low();row_search_for_mysql();ha_innobase::index_read();handler::read_range_first();handler::multi_range_read_next();QUICK_RANGE_SELECT::get_next();rr_quick();mysql_update();mysql_execute_command();Prepared_statement::execute();Prepared_statement::execute_loop();mysqld_stmt_execute();dispatch_command();do_handle_one_connection();handle_one_connection();start_thread()
+| 11 usecs, 39596 counts | mysqld | latch_exit(sync0sync.cc:1743);trx_commit_low(trx0trx.cc:1499);trx_commit(trx0trx.cc:2018);trx_commit_for_mysql(trx0trx.cc:2306);innobase_commit(ha_innodb.cc:5375);ha_commit_low(handler.cc:1693);TC_LOG_DUMMY::commit(log.h:122);ha_commit_trans(handler.cc:1611 (discriminator 2));trans_commit_stmt(transaction.cc:440);mysql_execute_command(sql_class.h:3628);Prepared_statement::execute(sql_prepare.cc:4057);Prepared_statement::execute_loop(sql_prepare.cc:3703);mysqld_stmt_execute(sql_prepare.cc:2725);dispatch_command(sql_parse.cc:1702);do_handle_one_connection(sql_connect.cc:1112);handle_one_connection(sql_connect.cc:1026);start_thread(??:?)
+
+| 21 usecs, 40188 counts | mysqld | latch_exit(sync0sync.cc:1743);trx_start_low(sync0sync.ic:195);row_search_for_mysql(row0sel.cc:4110);ha_innobase::index_read(ha_innodb.cc:9783);handler::read_range_first(handler.cc:2779);handler::multi_range_read_next(handler.cc:6010);QUICK_RANGE_SELECT::get_next(opt_range.cc:10612);rr_quick(records.cc:368 (discriminator 1));mysql_update(sql_update.cc:847);mysql_execute_command(sql_parse.cc:4446);Prepared_statement::execute(sql_prepare.cc:4057);Prepared_statement::execute_loop(sql_prepare.cc:3703);mysqld_stmt_execute(sql_prepare.cc:2725);dispatch_command(sql_parse.cc:1702);do_handle_one_connection(sql_connect.cc:1112);handle_one_connection(sql_connect.cc:1026);start_thread(??:?)
 ```
