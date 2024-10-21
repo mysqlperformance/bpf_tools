@@ -5,6 +5,7 @@ from time import sleep, strftime
 import argparse
 import signal
 import ctypes as ct
+import subprocess
 
 parser = argparse.ArgumentParser(description="Trace the latch latency from one user thread.",
     formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -147,9 +148,9 @@ int wait_end(struct pt_regs *ctx) {
 """
 
 usdt_ctx = USDT(pid=args.pid)
-usdt_ctx.enable_probe(probe="usdt:wait_start", fn_name="wait_start")
-usdt_ctx.enable_probe(probe="usdt:wait_end", fn_name="wait_end")
-usdt_ctx.enable_probe(probe="usdt:latch_exit", fn_name="latch_exit")
+usdt_ctx.enable_probe(probe="latch:wait_start", fn_name="wait_start")
+usdt_ctx.enable_probe(probe="latch:wait_end", fn_name="wait_end")
+usdt_ctx.enable_probe(probe="latch:latch_exit", fn_name="latch_exit")
 
 if args.milliseconds:
     bpf_text = bpf_text.replace('FACTOR', 'delta /= 1000000;')
@@ -171,6 +172,22 @@ def print_cross_line(c):
 def print_title(str):
   print("\033[32m%s\033[0m\n" % (str))
 
+def filename_split(line):
+  if line == "??:?" or line == "??:0" or line == "" or ":" not in line:
+    return "??:?"
+  return line.split('/')[-1]
+
+def addr2line(user_stack):
+  cmd = "readlink /proc/%d/exe" % (args.pid)
+  bin = subprocess.check_output(cmd, shell=True).strip()
+  addrs = ""
+  for s in user_stack:
+    addrs += (" %x" % (s))
+  cmd = "addr2line -e /proc/%d/root/%s %s" % (args.pid, bin, addrs)
+  res = subprocess.check_output(cmd, shell=True).split('\n')
+  src_code = [filename_split(line) for line in res]
+  return src_code
+
 # print distribution of latch_latency
 def print_latch_latency(avgs, latencys, stack_traces):
   print_cross_line('=')
@@ -180,14 +197,19 @@ def print_latch_latency(avgs, latencys, stack_traces):
   print_cross_line('=')
   print_title("Latency that other threads hold this latch when we are waiting: ")
   for k, v in sorted(latencys.items(), key=lambda kv: kv[1].total):
+    line = []
     user_stack = [] if k.stack_id < 0 else \
         stack_traces.walk(k.stack_id)
     user_stack = list(user_stack)
-    line = []
-    line.extend([b.sym(addr, k.pid).decode('utf-8', 'replace').split('(')[0] + "()" for addr in user_stack])
-    name = k.name.decode('utf-8', 'replace')
+    src_code = addr2line(user_stack)
+    for i in range(len(user_stack)):
+      addr = user_stack[i]
+      src = src_code[i]
+      line.extend([b.sym(addr, k.pid).decode('utf-8', 'replace').split('(')[0] + ("(%s)" % (src))])
+    #line.extend([b.sym(addr, k.pid).decode('utf-8', 'replace').split('(')[0] + ("(%x)" % (addr)) for addr in user_stack])
+    comm = k.name.decode('utf-8', 'replace')
     avg = (v.total) / (v.count + 1)
-    print("| %d %s, %d counts | %s | %s\n" % (avg, label, v.count, name, ";".join(line)))
+    print("| %d %s, %d counts | %s | %s\n" % (avg, label, v.count, comm, ";".join(line)))
 
 exiting = 0 if args.interval else 1
 seconds = 0

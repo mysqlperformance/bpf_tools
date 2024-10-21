@@ -163,13 +163,13 @@ int wait_end(struct pt_regs *ctx) {
 """
 
 usdt_ctx = USDT(pid=args.pid)
-usdt_ctx.enable_probe(probe="usdt:wait_start", fn_name="wait_start")
-usdt_ctx.enable_probe(probe="usdt:wait_end", fn_name="wait_end")
+usdt_ctx.enable_probe(probe="wakeup:wait_start", fn_name="wait_start")
+usdt_ctx.enable_probe(probe="wakeup:wait_end", fn_name="wait_end")
 
 wakeup_text = ""
 for i in range(1, args.max_wakeup_count):
   try:
-    usdt_ctx.enable_probe(probe="usdt:%d" % (i), fn_name="wakeup_%d" % (i))
+    usdt_ctx.enable_probe(probe="wakeup:%d" % (i), fn_name="wakeup_%d" % (i))
     fn_text = """
       int wakeup_""" + str(i) + """(struct pt_regs *ctx) {
         u32 wid = """ + str(i) + """;
