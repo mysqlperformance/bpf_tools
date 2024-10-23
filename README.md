@@ -99,7 +99,7 @@ Historgram =  from [ wait start ] to [ wakeup 1 ]
 ### latch_latency.py
 Sometimes, we want to know who holds the target latch, and cause user thread to wait for a long time.
 
-This scripts uses ebp-usdt to trace the waiting process of one random user thread, and shows all holding threads and its stacks, average latency and hold counts.
+This scripts uses ebp-usdt to trace the waiting process of one random user thread, and shows all holding threads and its call stacks, average latency and hold counts.
 
 #### usage:
 1. wait_position

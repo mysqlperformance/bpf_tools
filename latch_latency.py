@@ -10,6 +10,7 @@ import subprocess
 parser = argparse.ArgumentParser(description="Trace the latch latency from one user thread.",
     formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("-p", "--pid", type=int, help="The id of the process to trace.")
+parser.add_argument("-t", "--user_tid", type=int, help="the user thread id we care about.")
 parser.add_argument("-u", "--microseconds", action="store_true",
     help="microsecond histogram")
 parser.add_argument("-m", "--milliseconds", action="store_true",
@@ -74,6 +75,9 @@ static void set_user_tid(u64 val) {
   u64 *tid = user_tid.lookup(&key);
   if (tid == 0)
     return;
+  if (USER_THREAD != -1) {
+    val = USER_THREAD;
+  }
   if (*tid == 0)
     // no user thread, choose one
     *tid = val;
@@ -91,7 +95,7 @@ int wait_start(struct pt_regs *ctx) {
     return 0;
   }
 
-  //bpf_trace_printk("latch: %llu\\n", tid);
+  //bpf_trace_printk("latch: %llu\\n", (u32)tid);
   struct thd_t thd = {0};
   bpf_usdt_readarg(1, ctx, &thd.latch);
   thd.wait_ts = ts;
@@ -105,12 +109,12 @@ int latch_exit(struct pt_regs *ctx) {
   u32 tgid = id >> 32;
   u64 latch;
   bpf_usdt_readarg(1, ctx, &latch);
-  bpf_trace_printk("latch: %llu\\n", latch);
   u64 user_tid = get_user_tid();
   struct thd_t *thd = thds.lookup(&user_tid);
-  if (thd == 0 || latch != thd->latch) {
+  if (thd == 0 || latch != thd->latch || id == user_tid) {
       return 0;
   }
+  //bpf_trace_printk("latch: %llu, %d, %d\\n", latch, (u32)tgid, (u32)user_tid);
   struct key_t key = {.pid = tgid};
   key.stack_id = stack_traces.get_stackid(ctx, BPF_F_USER_STACK);
   bpf_get_current_comm(&key.name, sizeof(key.name));
@@ -161,6 +165,11 @@ elif args.microseconds:
 else:
     bpf_text = bpf_text.replace('FACTOR', '')
     label = "nsecs"
+
+if args.user_tid:
+  bpf_text = bpf_text.replace('USER_THREAD', str(args.user_tid))
+else:
+  bpf_text = bpf_text.replace('USER_THREAD', '-1')
 
 b = BPF(text=bpf_text, usdt_contexts=[usdt_ctx], debug=0)
 
@@ -224,6 +233,7 @@ while 1:
     if args.duration and seconds >= args.duration:
         exiting = 1
 
+    print("[ user thread %d is selected ]" % (ct.c_int32(b['user_tid'][0].value).value))
     print_latch_latency(b['avgs'], b['latencys'], b['stack_traces'])
     b['avgs'].clear()
     if exiting:

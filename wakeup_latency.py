@@ -9,6 +9,7 @@ import ctypes as ct
 parser = argparse.ArgumentParser(description="Trace the wakup latency from one user thread.",
     formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument("-p", "--pid", type=int, help="The id of the process to trace.")
+parser.add_argument("-t", "--user_tid", type=int, help="the user thread id we care about.")
 parser.add_argument("-u", "--microseconds", action="store_true",
     help="microsecond histogram")
 parser.add_argument("-m", "--milliseconds", action="store_true",
@@ -26,6 +27,8 @@ if args.duration and not args.interval:
   args.interval = args.duration
 if not args.interval:
   args.interval = 99999999
+if not args.duration:
+  args.duration = 99999999
 if not args.pid:
   print("ERROR: pid is empty")
   exit(1)
@@ -70,6 +73,9 @@ static void set_user_tid(u64 val) {
   u64 *tid = user_tid.lookup(&key);
   if (tid == 0)
     return;
+  if (USER_THREAD != -1) {
+    val = USER_THREAD;
+  }
   if (*tid == 0)
     // no user thread, choose one
     *tid = val;
@@ -99,9 +105,23 @@ static void store_wakeup_time(struct thd_t *thd, u32 wid, u64 ts) {
   thd->is_wakeup[wid] = true;
   set_wakeup_ts(wid, ts);
 
+  /* large wakeup comes, and we enable all small
+   * uncoming wakeups and set their latency to 1ns */
+  u32 i = wid - 1;
+  for (; i > 0 && !thd->is_wakeup[i]; i--) {
+    thd->is_wakeup[i] = true;
+    hist_key_t key = {};
+
+    key.wakeup_id = i;
+    u64 delta = 1;
+    key.slot = bpf_log2l(delta);
+    wakeup_dist.increment(key);
+    wakeup_totals.increment(i, delta);
+    wakeup_counts.increment(i, 1);
+  }
   /* calculate the time after previous wakeup */
-  u64 prev_ts = get_wakeup_ts(wid - 1);
-  if (thd->is_wakeup[wid - 1] && ts > prev_ts) {
+  u64 prev_ts = get_wakeup_ts(i);
+  if (ts > prev_ts) {
     hist_key_t key = {};
     u64 delta = ts - prev_ts;
     FACTOR
@@ -175,7 +195,7 @@ for i in range(1, args.max_wakeup_count):
         u32 wid = """ + str(i) + """;
         u64 notify_val;
         bpf_usdt_readarg(1, ctx, &notify_val);
-        bpf_trace_printk("norify_val %llu\\n", notify_val);
+        //bpf_trace_printk("norify_val %llu\\n", notify_val);
         u64 tid = get_user_tid();
         struct thd_t *thd = thds.lookup(&tid);
 
@@ -193,7 +213,7 @@ for i in range(1, args.max_wakeup_count):
   except:
     break;
 
-print("[ %d wakeup point are set ]" % (i-1))
+print("[ %d wakeup points are set ]" % (i-1))
 bpf_text = bpf_text.replace("WAKEUP_FUNC", wakeup_text);
 bpf_text = bpf_text.replace("MAX_WAKEUP_COUNT", str(i));
 args.max_wakeup_count = i
@@ -206,6 +226,11 @@ elif args.microseconds:
 else:
     bpf_text = bpf_text.replace('FACTOR', '')
     label = "nsecs"
+
+if args.user_tid:
+  bpf_text = bpf_text.replace('USER_THREAD', str(args.user_tid))
+else:
+  bpf_text = bpf_text.replace('USER_THREAD', '-1')
 
 b = BPF(text=bpf_text, usdt_contexts=[usdt_ctx], debug=0)
 
@@ -265,8 +290,9 @@ while 1:
     if args.duration and seconds >= args.duration:
         exiting = 1
 
-    print_wakeup_graph(b['wakeup_totals'], b['wakeup_counts'])
+    print("[ user thread %d is selected ]" % (ct.c_int32(b['user_tid'][0].value).value))
     print_wakeup_dist(b['wakeup_dist'])
+    print_wakeup_graph(b['wakeup_totals'], b['wakeup_counts'])
     b['wakeup_totals'].clear()
     b['wakeup_counts'].clear()
     b['wakeup_dist'].clear()
