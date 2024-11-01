@@ -105,23 +105,9 @@ static void store_wakeup_time(struct thd_t *thd, u32 wid, u64 ts) {
   thd->is_wakeup[wid] = true;
   set_wakeup_ts(wid, ts);
 
-  /* large wakeup comes, and we enable all small
-   * uncoming wakeups and set their latency to 1ns */
-  u32 i = wid - 1;
-  for (; i > 0 && !thd->is_wakeup[i]; i--) {
-    thd->is_wakeup[i] = true;
-    hist_key_t key = {};
-
-    key.wakeup_id = i;
-    u64 delta = 1;
-    key.slot = bpf_log2l(delta);
-    wakeup_dist.increment(key);
-    wakeup_totals.increment(i, delta);
-    wakeup_counts.increment(i, 1);
-  }
   /* calculate the time after previous wakeup */
-  u64 prev_ts = get_wakeup_ts(i);
-  if (ts > prev_ts) {
+  u64 prev_ts = get_wakeup_ts(wid - 1);
+  if (thd->is_wakeup[wid - 1] && ts > prev_ts) {
     hist_key_t key = {};
     u64 delta = ts - prev_ts;
     FACTOR
@@ -254,8 +240,8 @@ def print_wakeup_graph(totals, counts):
   print("\t\033[33m[ wait_start ]\033[0m")
   for i in range(1, args.max_wakeup_count):
     cnt = counts[i].value
-    if cnt == 0:
-      continue
+    #if cnt == 0:
+    #  continue
     avg = get_avg(totals, counts, i)
     print_arrow("%d %s, %d counts" % (avg, label, cnt), "[ wakeup %d ]" % (i))
   cnt = counts[args.max_wakeup_count].value

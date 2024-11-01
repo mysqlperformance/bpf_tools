@@ -144,3 +144,47 @@ Latency that other threads hold this latch when we are waiting:
 
 | 21 usecs, 40188 counts | mysqld | latch_exit(sync0sync.cc:1743);trx_start_low(sync0sync.ic:195);row_search_for_mysql(row0sel.cc:4110);ha_innobase::index_read(ha_innodb.cc:9783);handler::read_range_first(handler.cc:2779);handler::multi_range_read_next(handler.cc:6010);QUICK_RANGE_SELECT::get_next(opt_range.cc:10612);rr_quick(records.cc:368 (discriminator 1));mysql_update(sql_update.cc:847);mysql_execute_command(sql_parse.cc:4446);Prepared_statement::execute(sql_prepare.cc:4057);Prepared_statement::execute_loop(sql_prepare.cc:3703);mysqld_stmt_execute(sql_prepare.cc:2725);dispatch_command(sql_parse.cc:1702);do_handle_one_connection(sql_connect.cc:1112);handle_one_connection(sql_connect.cc:1026);start_thread(??:?)
 ```
+
+### vardist.py
+This scripts shows the distribution of a program variable.
+Now it only supports using USDTs in the code.
+
+#### usage:
+1. add the variable position
+```shell
+FOLLY_SDT(vardist, var_name, var_value);
+```
+
+#### example:
+```shell
+sudo ./vardist.py -p 105411 -n lsn_delta -d 3
+[ Attaching probes to pid 105411 for 3 seconds ]
+================================================================================
+Distribution of varables [lsn_delta]:
+     lsn_delta           : count     distribution
+         0 -> 1          : 0        |                                        |
+         2 -> 3          : 0        |                                        |
+         4 -> 7          : 0        |                                        |
+         8 -> 15         : 0        |                                        |
+        16 -> 31         : 1        |                                        |
+        32 -> 63         : 0        |                                        |
+        64 -> 127        : 1        |                                        |
+       128 -> 255        : 7        |                                        |
+       256 -> 511        : 8        |                                        |
+       512 -> 1023       : 14       |                                        |
+      1024 -> 2047       : 52       |                                        |
+      2048 -> 4095       : 79       |                                        |
+      4096 -> 8191       : 15       |                                        |
+      8192 -> 16383      : 1        |                                        |
+     16384 -> 32767      : 220      |                                        |
+     32768 -> 65535      : 63       |                                        |
+     65536 -> 131071     : 692      |*                                       |
+    131072 -> 262143     : 1608     |****                                    |
+    262144 -> 524287     : 3819     |**********                              |
+    524288 -> 1048575    : 7909     |********************                    |
+   1048576 -> 2097151    : 15174    |****************************************|
+   2097152 -> 4194303    : 5769     |***************                         |
+variable avg: 1290254, cnt: 35454
+```
+
+
